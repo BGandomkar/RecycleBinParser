@@ -5,9 +5,9 @@ PowerShell equivalent of Eric Zimmerman's RBCmd.exe, version 1.0.0. Parses $RECY
 
 ## Notes
 
-### Time Zone: Script uses EDT (UTC-4) for LastModified and LocalTime. Current time (09:35 PM CEST, September 2, 2025) is UTC+2, but this doesn’t affect the description.
-### Flexibility: Avoided column names to accommodate potential changes, as requested.
-### Running the Script:
+- **Time Zone**: Script uses EDT (UTC-4) for LastModified and LocalTime. Current time (09:35 PM CEST, September 2, 2025) is UTC+2, but this doesn’t affect the description.
+- **Flexibility**: Avoided column names to accommodate potential changes, as requested.
+- **Running the Script**:
 
-  Console: `.\RecycleBinParser.ps1`
-  CSV: `.\RecycleBinParser.ps1 -CsvPath "C:\temp\output.csv"`
+  - Console: `.\RecycleBinParser.ps1`
+  - CSV: `.\RecycleBinParser.ps1 -CsvPath "C:\temp\output.csv"`
