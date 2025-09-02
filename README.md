@@ -5,7 +5,7 @@ PowerShell equivalent of Eric Zimmerman's RBCmd.exe, version 1.0.0. Parses $RECY
 
 ## Notes
 
-- **Time Zone**: Script uses EDT (UTC-4) for LastModified and LocalTime. Current time (09:35 PM CEST, September 2, 2025) is UTC+2, but this doesn’t affect the description.
+- **Time Zone**: Script uses Localtime for LastModified `$I` files and LocalTime and UTC time for deleted files metadata.
 - **Flexibility**: Avoided column names to accommodate potential changes, as requested.
 - **Running the Script**:
 
