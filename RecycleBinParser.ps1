@@ -1,10 +1,11 @@
 ﻿<#
     Description:
         This script searches all partitions for $RECYCLE.BIN folders, recursively finds files starting with $I,
-        and parses their metadata. It extracts FileSize (bytes 8-15), FILETIME (bytes 16-23 as UTC and local time),
-        PathLength (bytes 24-27), OriginalPath (bytes 28+ in UTF-16LE), SID from the file path, UserName from the SID,
-        and LastModified time from the file's LastWriteTime. Results are output to a CSV file if -CsvPath is provided,
-        otherwise displayed as a table in the console.
+        and parses their metadata. It extracts FileSize (bytes 8-15), FILETIME (bytes 16-23 as DeletionUTCTime and DeletionLocalTime),
+        PathLength (bytes 24-27 minus 1), OriginalPath (bytes 28+ in UTF-16LE), SID from the file path, UserName from the SID,
+        and LastModified time from the file's LastWriteTime. Detects anomalies (e.g., mismatched modification time to the second)
+        and includes them in an Anomalies column. Results are output to a CSV file if -CsvPath is provided,
+        otherwise displayed as a list in the console.
 
     Version: 1.0.0
     Author: Recycle Bin Parser Developer
@@ -41,9 +42,9 @@ function ParseRecycleFile {
         return $null
     }
 
-    # Next 4 bytes (indices 24–27): PathLength
+    # Next 4 bytes (indices 24–27): PathLength (minus 1)
     $nextFourBytes = $bytes[24..27]
-    $pathLength = [BitConverter]::ToInt32($nextFourBytes, 0)
+    $pathLength = [BitConverter]::ToInt32($nextFourBytes, 0) - 1
 
     # File path (index 28 until 00 00, UTF-16LE)
     $pathBytes = @()
@@ -76,16 +77,25 @@ function ParseRecycleFile {
         $userName = "Unknown"
     }
 
+    # Check for anomalies
+    $anomalies = @()
+    if ($LastModified.ToString("yyyy-MM-dd HH:mm:ss") -ne $localTime.ToString("yyyy-MM-dd HH:mm:ss")) {
+        $anomalies += "ModificationTimeMismatch"
+    }
+    # Add more anomaly checks here in the future
+    $anomalyString = $anomalies -join ", "
+
     [PSCustomObject]@{
         RecycleFile = $FilePath
         FileSize = $fileSize
-        UTCTime = $utcTime
-        LocalTime = $localTime
+        DeletionUTCTime = $utcTime
+        DeletionLocalTime = $localTime
         RecycleFileModification = $LastModified
         PathLength = $pathLength
         OriginalPath = $filePathString
         SID = $sid
         UserName = $userName
+        Anomalies = $anomalyString
     }
 }
 
@@ -109,5 +119,5 @@ foreach ($drive in $drives) {
 if ($CsvPath) {
     $results | Export-Csv -Path $CsvPath -NoTypeInformation
 } else {
-    $results | Format-Table -AutoSize
+    $results | Format-List
 }
