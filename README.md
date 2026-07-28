@@ -1,12 +1,38 @@
 # RecycleBinParser
 
-PowerShell equivalent of Eric Zimmerman's RBCmd.exe, version 1.0.0. Parses $RECYCLE.BIN $I* files across all partitions to extract metadata from Windows Recycle Bin, including file details and user information from UTF-16LE encoded paths. Supports flexible output to a CSV file with -CsvPath for detailed forensic analysis or to the console for quick review. Ideal for digital forensics, system auditing, and incident response, this script processes $I files to retrieve critical data. Requires admin privileges to access Recycle Bin folders. Its modular design allows easy adaptation for evolving forensic needs, making it a valuable tool for investigators and administrators.
+PowerShell tool (v1.1.0) that parses Windows Recycle Bin `$I` metadata (Vista+ versions 1 and 2), pairs each entry with its `$R` content file, and reports integrity anomalies. Inspired by Eric Zimmerman's RBCmd.
+
+**License:** [Mozilla Public License 2.0](LICENSE)
+
+## Features
+
+- Version-aware `$I` parsing (v1 Vista–8.1, v2 Windows 10+)
+- `$I` / `$R` pairing and size checks
+- Scan all drives, one `-Drive`, or a custom `-Path` (offline copy)
+- Works without admin for your own Recycle Bin; warns when not elevated
+- CSV or console output; `-Verbose` for skipped files
+- Pester tests with synthetic fixtures
+
+## Usage
+
+```powershell
+.\RecycleBinParser.ps1
+.\RecycleBinParser.ps1 -Drive C -CsvPath C:\temp\recycle.csv
+.\RecycleBinParser.ps1 -Path D:\evidence\`$RECYCLE.BIN -Verbose
+Get-Help .\RecycleBinParser.ps1 -Full
+```
+
+## Tests
+
+```powershell
+Invoke-Pester -Path .\tests
+```
+
+## Documentation
+
+See [docs/index.md](docs/index.md) for getting started, usage, and architecture. Contribution notes: [CONTRIBUTING.md](CONTRIBUTING.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Notes
 
-- **Time Zone**: Script uses Localtime for LastModified `$I` files and LocalTime and UTC time for deleted files metadata.
-- **Flexibility**: Avoided column names to accommodate potential changes, as requested.
-- **Running the Script**:
-
-  - Console: `.\RecycleBinParser.ps1`
-  - CSV: `.\RecycleBinParser.ps1 -CsvPath "C:\temp\output.csv"`
+- Deletion times come from the `$I` FILETIME (UTC and local). `RecycleFileModification` is the `$I` file's `LastWriteTime` (local).
+- Emptying the Recycle Bin removes `$I`/`$R` pairs; this tool only reads what is still on disk.

@@ -1,123 +1,378 @@
 ﻿<#
-    Description:
-        This script searches all partitions for $RECYCLE.BIN folders, recursively finds files starting with $I,
-        and parses their metadata. It extracts FileSize (bytes 8-15), FILETIME (bytes 16-23 as DeletionUTCTime and DeletionLocalTime),
-        PathLength (bytes 24-27 minus 1), OriginalPath (bytes 28+ in UTF-16LE), SID from the file path, UserName from the SID,
-        and LastModified time from the file's LastWriteTime. Detects anomalies (e.g., mismatched modification time to the second)
-        and includes them in an Anomalies column. Results are output to a CSV file if -CsvPath is provided,
-        otherwise displayed as a list in the console.
+.SYNOPSIS
+    Parses Windows Recycle Bin $I metadata files across drives or a custom path.
 
-    Version: 1.0.0
-    Author: Recycle Bin Parser Developer
+.DESCRIPTION
+    Searches $RECYCLE.BIN folders for $I* metadata files, parses Vista+ format
+    versions 1 and 2, pairs each entry with its matching $R content file, resolves
+    SID to username when possible, and reports integrity anomalies.
+
+    Non-administrators can still parse their own Recycle Bin SID folder; other
+    users' folders may be inaccessible without elevation.
+
+.PARAMETER CsvPath
+    Optional path to write results as CSV. If omitted, results are written with Format-List.
+
+.PARAMETER Drive
+    Optional drive letter (e.g. C or C:) to scan only that volume's $RECYCLE.BIN.
+    Mutually exclusive with -Path.
+
+.PARAMETER Path
+    Optional absolute path to a $RECYCLE.BIN tree (live folder or offline copy).
+    Mutually exclusive with -Drive.
+
+.EXAMPLE
+    .\RecycleBinParser.ps1
+
+    Scan all filesystem drives and list results in the console.
+
+.EXAMPLE
+    .\RecycleBinParser.ps1 -Drive C -CsvPath C:\temp\recycle.csv -Verbose
+
+    Scan only C:\$RECYCLE.BIN and export CSV with verbose parse messages.
+
+.EXAMPLE
+    .\RecycleBinParser.ps1 -Path D:\evidence\$RECYCLE.BIN
+
+    Parse an offline or mounted Recycle Bin copy.
+
+.NOTES
+    Version: 1.1.0
+    License: MPL-2.0
+    $I format: version 1 (Vista-8.1), version 2 (Windows 10+).
 #>
 
+[CmdletBinding(DefaultParameterSetName = 'AllDrives')]
 param(
-    [Parameter(Mandatory=$false)]
-    [string]$CsvPath
+    [Parameter(Mandatory = $false)]
+    [string]$CsvPath,
+
+    [Parameter(Mandatory = $false, ParameterSetName = 'Drive')]
+    [ValidateNotNullOrEmpty()]
+    [string]$Drive,
+
+    [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
+    [ValidateNotNullOrEmpty()]
+    [string]$Path
 )
+
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Get-RecycleDataPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$IFilePath
+    )
+
+    $directory = Split-Path -Parent $IFilePath
+    $leaf = Split-Path -Leaf $IFilePath
+    if ($leaf.Length -lt 2 -or -not $leaf.StartsWith('$I', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+
+    $rLeaf = '$R' + $leaf.Substring(2)
+    return Join-Path $directory $rLeaf
+}
+
+function Resolve-RecycleSid {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+
+    $sid = 'Not found'
+    $userName = 'Unknown'
+    $unknownSid = $false
+
+    $pathComponents = $FilePath.Split([char[]]@('\', '/'), [System.StringSplitOptions]::RemoveEmptyEntries)
+    $recycleIndex = -1
+    for ($i = 0; $i -lt $pathComponents.Length; $i++) {
+        if ($pathComponents[$i] -ieq '$RECYCLE.BIN') {
+            $recycleIndex = $i
+            break
+        }
+    }
+
+    if ($recycleIndex -ge 0 -and ($recycleIndex + 1) -lt $pathComponents.Length) {
+        $sid = $pathComponents[$recycleIndex + 1]
+        try {
+            $sidObj = New-Object System.Security.Principal.SecurityIdentifier($sid)
+            try {
+                $userName = $sidObj.Translate([System.Security.Principal.NTAccount]).Value
+            } catch {
+                $userName = "Unknown (SID: $sid)"
+                $unknownSid = $true
+            }
+        } catch {
+            $userName = "Unknown (SID: $sid)"
+            $unknownSid = $true
+        }
+    }
+
+    [PSCustomObject]@{
+        SID        = $sid
+        UserName   = $userName
+        UnknownSid = $unknownSid
+    }
+}
 
 function ParseRecycleFile {
     param(
+        [Parameter(Mandatory = $true)]
         [string]$FilePath,
+
+        [Parameter(Mandatory = $true)]
         [datetime]$LastModified
     )
 
     $bytes = [System.IO.File]::ReadAllBytes($FilePath)
 
-    if ($bytes.Length -lt 30) {
+    if ($bytes.Length -lt 24) {
+        Write-Verbose "Skipping short file ($($bytes.Length) bytes): $FilePath"
         return $null
     }
 
-    # Second 8 bytes (indices 8–15): FileSize
-    $secondEightBytes = $bytes[8..15]
-    $fileSize = [BitConverter]::ToInt64($secondEightBytes, 0)
+    $formatVersion = [BitConverter]::ToInt64($bytes, 0)
+    if ($formatVersion -ne 1 -and $formatVersion -ne 2) {
+        Write-Verbose "Skipping unknown `$I version $formatVersion : $FilePath"
+        return $null
+    }
 
-    # Third 8 bytes (indices 16–23): FILETIME
-    $thirdEightBytes = $bytes[16..23]
-    $fileTimeValue = [BitConverter]::ToInt64($thirdEightBytes, 0)
+    $fileSize = [BitConverter]::ToInt64($bytes, 8)
+    $fileTimeValue = [BitConverter]::ToInt64($bytes, 16)
+
     try {
         $utcTime = [DateTime]::FromFileTimeUtc($fileTimeValue)
         $localTime = [DateTime]::FromFileTime($fileTimeValue)
     } catch {
+        Write-Verbose "Skipping invalid FILETIME in: $FilePath"
         return $null
     }
 
-    # Next 4 bytes (indices 24–27): PathLength (minus 1)
-    $nextFourBytes = $bytes[24..27]
-    $pathLength = [BitConverter]::ToInt32($nextFourBytes, 0) - 1
+    $pathLength = 0
+    $filePathString = $null
 
-    # File path (index 28 until 00 00, UTF-16LE)
-    $pathBytes = @()
-    $i = 28
-    while ($i -lt ($bytes.Length - 1) -and -not ($bytes[$i] -eq 0x00 -and $bytes[$i + 1] -eq 0x00)) {
-        $pathBytes += $bytes[$i]
-        $pathBytes += $bytes[$i + 1]
-        $i += 2
-    }
-    if ($i -ge $bytes.Length - 1 -or -not ($bytes[$i] -eq 0x00 -and $bytes[$i + 1] -eq 0x00)) {
-        return $null
-    }
-
-    $filePathString = [System.Text.Encoding]::Unicode.GetString($pathBytes)
-
-    # Extract SID from FilePath (e.g., C:\$Recycle.Bin\<SID>\$I...)
-    $sid = ""
-    $userName = ""
-    $pathComponents = $FilePath.Split('\')
-    if ($pathComponents.Length -ge 3 -and $pathComponents[1] -eq '$Recycle.Bin') {
-        $sid = $pathComponents[2]
-        try {
-            $sidObj = New-Object System.Security.Principal.SecurityIdentifier($sid)
-            $userName = $sidObj.Translate([System.Security.Principal.NTAccount]).Value
-        } catch {
-            $userName = "Unknown (SID: $sid)"
+    if ($formatVersion -eq 1) {
+        # Fixed path slot at offset 24 (520 bytes / 260 UTF-16 code units), NUL-padded.
+        if ($bytes.Length -lt 28) {
+            Write-Verbose "Skipping truncated v1 `$I file: $FilePath"
+            return $null
         }
+
+        $pathStart = 24
+        $pathEndExclusive = [Math]::Min($bytes.Length, 544)
+        if (($pathEndExclusive - $pathStart) -lt 2) {
+            Write-Verbose "Skipping v1 `$I with empty path region: $FilePath"
+            return $null
+        }
+
+        $pathByteCount = $pathEndExclusive - $pathStart
+        if (($pathByteCount % 2) -ne 0) {
+            $pathByteCount--
+        }
+
+        $terminatorIndex = -1
+        for ($i = $pathStart; $i -lt ($pathStart + $pathByteCount - 1); $i += 2) {
+            if ($bytes[$i] -eq 0 -and $bytes[$i + 1] -eq 0) {
+                $terminatorIndex = $i
+                break
+            }
+        }
+
+        if ($terminatorIndex -lt 0) {
+            Write-Verbose "Skipping v1 `$I without NUL-terminated path: $FilePath"
+            return $null
+        }
+
+        $rawPathLen = $terminatorIndex - $pathStart
+        if ($rawPathLen -gt 0) {
+            $filePathString = [System.Text.Encoding]::Unicode.GetString($bytes, $pathStart, $rawPathLen)
+        } else {
+            $filePathString = ''
+        }
+        $pathLength = [Math]::Floor($rawPathLen / 2)
     } else {
-        $sid = "Not found"
-        $userName = "Unknown"
+        # Version 2: UInt32 character count (including NUL) at offset 24; path at 28.
+        if ($bytes.Length -lt 28) {
+            Write-Verbose "Skipping truncated v2 `$I file: $FilePath"
+            return $null
+        }
+
+        $charCountIncludingNul = [BitConverter]::ToUInt32($bytes, 24)
+        if ($charCountIncludingNul -lt 1) {
+            Write-Verbose "Skipping v2 `$I with invalid path length: $FilePath"
+            return $null
+        }
+
+        $pathByteLength = [int]($charCountIncludingNul * 2)
+        $requiredLength = 28 + $pathByteLength
+        if ($bytes.Length -lt $requiredLength) {
+            Write-Verbose "Skipping v2 `$I path overflow (need $requiredLength, have $($bytes.Length)): $FilePath"
+            return $null
+        }
+
+        $pathCharsWithoutNul = [int]($charCountIncludingNul - 1)
+        $pathLength = $pathCharsWithoutNul
+        if ($pathCharsWithoutNul -gt 0) {
+            $filePathString = [System.Text.Encoding]::Unicode.GetString($bytes, 28, $pathCharsWithoutNul * 2)
+        } else {
+            $filePathString = ''
+        }
+
+        # Validate trailing NUL
+        $nulOffset = 28 + ($pathCharsWithoutNul * 2)
+        if ($bytes[$nulOffset] -ne 0 -or $bytes[$nulOffset + 1] -ne 0) {
+            Write-Verbose "Skipping v2 `$I without expected path NUL terminator: $FilePath"
+            return $null
+        }
     }
 
-    # Check for anomalies
-    $anomalies = @()
-    if ($LastModified.ToString("yyyy-MM-dd HH:mm:ss") -ne $localTime.ToString("yyyy-MM-dd HH:mm:ss")) {
-        $anomalies += "ModificationTimeMismatch"
+    $sidInfo = Resolve-RecycleSid -FilePath $FilePath
+
+    $rPath = Get-RecycleDataPath -IFilePath $FilePath
+    $rExists = $false
+    $rSize = $null
+    if ($rPath -and (Test-Path -LiteralPath $rPath -PathType Leaf)) {
+        $rExists = $true
+        $rSize = (Get-Item -LiteralPath $rPath -Force).Length
     }
-    # Add more anomaly checks here in the future
-    $anomalyString = $anomalies -join ", "
+
+    $anomalies = New-Object System.Collections.Generic.List[string]
+
+    if ($LastModified.ToString('yyyy-MM-dd HH:mm:ss') -ne $localTime.ToString('yyyy-MM-dd HH:mm:ss')) {
+        [void]$anomalies.Add('ModificationTimeMismatch')
+    }
+    if (-not $rExists) {
+        [void]$anomalies.Add('RFileMissing')
+    } elseif ($null -ne $rSize -and $rSize -ne $fileSize) {
+        [void]$anomalies.Add('SizeMismatch')
+    }
+    if ($formatVersion -eq 2 -and $pathLength -ge 0) {
+        $pathStart = 28
+        $earlyNul = $false
+        for ($i = $pathStart; $i -lt ($pathStart + ($pathLength * 2) - 1); $i += 2) {
+            if ($bytes[$i] -eq 0 -and $bytes[$i + 1] -eq 0) {
+                $earlyNul = $true
+                break
+            }
+        }
+        if ($earlyNul) {
+            [void]$anomalies.Add('PathLengthMismatch')
+        }
+    }
+    if ($sidInfo.UnknownSid) {
+        [void]$anomalies.Add('UnknownSid')
+    }
 
     [PSCustomObject]@{
-        RecycleFile = $FilePath
-        FileSize = $fileSize
-        DeletionUTCTime = $utcTime
-        DeletionLocalTime = $localTime
+        RecycleFile             = $FilePath
+        FormatVersion           = $formatVersion
+        FileSize                = $fileSize
+        DeletionUTCTime         = $utcTime
+        DeletionLocalTime       = $localTime
         RecycleFileModification = $LastModified
-        PathLength = $pathLength
-        OriginalPath = $filePathString
-        SID = $sid
-        UserName = $userName
-        Anomalies = $anomalyString
+        PathLength              = $pathLength
+        OriginalPath            = $filePathString
+        RecycleDataFile         = if ($rPath) { $rPath } else { '' }
+        RecycleDataExists       = $rExists
+        RecycleDataSize         = $rSize
+        SID                     = $sidInfo.SID
+        UserName                = $sidInfo.UserName
+        Anomalies               = ($anomalies -join ', ')
     }
 }
 
-$results = @()
+function Get-RecycleBinRoots {
+    param(
+        [string]$Drive,
+        [string]$Path
+    )
 
-$drives = Get-PSDrive -PSProvider FileSystem
+    $roots = New-Object System.Collections.Generic.List[string]
 
-foreach ($drive in $drives) {
-    $recycleBin = Join-Path $drive.Root '$RECYCLE.BIN'
-    if (Test-Path $recycleBin) {
-        $files = Get-ChildItem -Path $recycleBin -Recurse -Filter '$I*' -Force -File -ErrorAction SilentlyContinue
+    if ($Path) {
+        if (-not (Test-Path -LiteralPath $Path)) {
+            throw "Path not found: $Path"
+        }
+        [void]$roots.Add((Resolve-Path -LiteralPath $Path).Path)
+        return , $roots.ToArray()
+    }
+
+    if ($Drive) {
+        $letter = $Drive.TrimEnd(':', '\', '/')
+        if ($letter.Length -ne 1 -or $letter -notmatch '^[A-Za-z]$') {
+            throw "Invalid Drive value '$Drive'. Use a single letter such as C or C:."
+        }
+        $recycleBin = Join-Path "${letter}:" '$RECYCLE.BIN'
+        if (Test-Path -LiteralPath $recycleBin) {
+            [void]$roots.Add($recycleBin)
+        } else {
+            Write-Verbose "No `$RECYCLE.BIN found on drive ${letter}:"
+        }
+        return , $roots.ToArray()
+    }
+
+    foreach ($fsDrive in Get-PSDrive -PSProvider FileSystem) {
+        if (-not $fsDrive.Root) {
+            continue
+        }
+        $recycleBin = Join-Path $fsDrive.Root '$RECYCLE.BIN'
+        if (Test-Path -LiteralPath $recycleBin) {
+            [void]$roots.Add($recycleBin)
+        }
+    }
+
+    return , $roots.ToArray()
+}
+
+function Invoke-RecycleBinParser {
+    param(
+        [string]$Drive,
+        [string]$Path
+    )
+
+    if (-not (Test-IsAdministrator)) {
+        Write-Warning "Not running elevated. Other users' Recycle Bin folders may be inaccessible; your own SID folder can still be parsed."
+    }
+
+    $results = New-Object System.Collections.Generic.List[object]
+    $roots = Get-RecycleBinRoots -Drive $Drive -Path $Path
+
+    foreach ($root in $roots) {
+        Write-Verbose "Scanning: $root"
+        try {
+            $files = Get-ChildItem -LiteralPath $root -Recurse -Filter '$I*' -Force -File -ErrorAction SilentlyContinue
+        } catch {
+            Write-Verbose "Failed to enumerate $root : $_"
+            continue
+        }
+
         foreach ($file in $files) {
-            $parsed = ParseRecycleFile -FilePath $file.FullName -LastModified $file.LastWriteTime
-            if ($parsed) {
-                $results += $parsed
+            try {
+                $parsed = ParseRecycleFile -FilePath $file.FullName -LastModified $file.LastWriteTime
+                if ($parsed) {
+                    [void]$results.Add($parsed)
+                }
+            } catch {
+                Write-Verbose "Failed to parse $($file.FullName): $_"
             }
         }
     }
+
+    return , $results
 }
 
-if ($CsvPath) {
-    $results | Export-Csv -Path $CsvPath -NoTypeInformation
-} else {
-    $results | Format-List
+# Run when executed; skip when dot-sourced (e.g. Pester).
+if ($MyInvocation.InvocationName -ne '.') {
+    $results = Invoke-RecycleBinParser -Drive $Drive -Path $Path
+    if ($CsvPath) {
+        $results | Export-Csv -Path $CsvPath -NoTypeInformation
+        Write-Verbose "Wrote $($results.Count) row(s) to $CsvPath"
+    } else {
+        $results | Format-List
+    }
 }
