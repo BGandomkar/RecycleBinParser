@@ -30,15 +30,23 @@ Unknown versions are skipped (`Write-Verbose`).
 
 ## `$I` / `$R` pairing
 
-For `$I<suffix>`, the content file is `$R<suffix>` in the same directory.
+For `$I<suffix>`, the content file is `$R<suffix>` in the same directory. `$R` may be a file or a directory (recycled folder).
+
+## FileType
+
+`Get-RecycleBinFileType` sets `FileType` as:
+
+1. `directory` if `$R` exists as a container
+2. Otherwise the lowercase extension from `OriginalPath` (e.g. `pdf`, `exe`)
+3. `unknown` if there is no extension
 
 ## Anomalies
 
 | Flag | Meaning |
 |------|---------|
 | `ModificationTimeMismatch` | `$I` LastWriteTime ≠ deletion local time (second precision) |
-| `RFileMissing` | Matching `$R` not found |
-| `SizeMismatch` | `$R` length ≠ metadata file size |
+| `RFileMissing` | Matching `$R` not found (file or directory) |
+| `SizeMismatch` | `$R` **file** length ≠ metadata file size (not applied to directories) |
 | `PathLengthMismatch` | Early NUL inside the v2 declared path region |
 | `UnknownSid` | SID folder invalid or could not be translated |
 

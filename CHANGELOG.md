@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.0] - 2026-07-29
+
+### Added
+
+- `FileType` output field (`pdf`, `exe`, `directory`, `unknown`, …)
+- Recognition of recycled directories as `$R` containers (no false `RFileMissing`)
+
 ## [1.3.0] - 2026-07-29
 
 ### Added

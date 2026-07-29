@@ -45,7 +45,7 @@
     Show only Recycle Bin items that have one or more anomaly flags.
 
 .NOTES
-    Version: 1.3.0
+    Version: 1.4.0
     License: MPL-2.0
     $I format: version 1 (Vista-8.1), version 2 (Windows 10+).
 #>
@@ -87,6 +87,28 @@ function Resolve-RecycleBinDataPath {
 
     $rLeaf = '$R' + $leaf.Substring(2)
     return Join-Path $directory $rLeaf
+}
+
+function Get-RecycleBinFileType {
+    param(
+        [string]$OriginalPath,
+        [bool]$IsDirectory
+    )
+
+    if ($IsDirectory) {
+        return 'directory'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($OriginalPath)) {
+        return 'unknown'
+    }
+
+    $extension = [System.IO.Path]::GetExtension($OriginalPath)
+    if ([string]::IsNullOrWhiteSpace($extension)) {
+        return 'unknown'
+    }
+
+    return $extension.TrimStart('.').ToLowerInvariant()
 }
 
 function Resolve-RecycleBinSid {
@@ -246,11 +268,19 @@ function ConvertFrom-RecycleBinIFile {
 
     $rPath = Resolve-RecycleBinDataPath -IFilePath $FilePath
     $rExists = $false
+    $rIsDirectory = $false
     $rSize = $null
-    if ($rPath -and (Test-Path -LiteralPath $rPath -PathType Leaf)) {
-        $rExists = $true
-        $rSize = (Get-Item -LiteralPath $rPath -Force).Length
+    if ($rPath -and (Test-Path -LiteralPath $rPath)) {
+        if (Test-Path -LiteralPath $rPath -PathType Container) {
+            $rExists = $true
+            $rIsDirectory = $true
+        } elseif (Test-Path -LiteralPath $rPath -PathType Leaf) {
+            $rExists = $true
+            $rSize = (Get-Item -LiteralPath $rPath -Force).Length
+        }
     }
+
+    $fileType = Get-RecycleBinFileType -OriginalPath $filePathString -IsDirectory $rIsDirectory
 
     $anomalies = New-Object System.Collections.Generic.List[string]
 
@@ -259,7 +289,7 @@ function ConvertFrom-RecycleBinIFile {
     }
     if (-not $rExists) {
         [void]$anomalies.Add('RFileMissing')
-    } elseif ($null -ne $rSize -and $rSize -ne $fileSize) {
+    } elseif (-not $rIsDirectory -and $null -ne $rSize -and $rSize -ne $fileSize) {
         [void]$anomalies.Add('SizeMismatch')
     }
     if ($formatVersion -eq 2 -and $pathLength -ge 0) {
@@ -283,6 +313,7 @@ function ConvertFrom-RecycleBinIFile {
         RecycleFile             = $FilePath
         FormatVersion           = $formatVersion
         FileSize                = $fileSize
+        FileType                = $fileType
         DeletionUTCTime         = $utcTime
         DeletionLocalTime       = $localTime
         RecycleFileModification = $LastModified

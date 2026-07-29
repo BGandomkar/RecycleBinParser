@@ -38,4 +38,4 @@ If you are not elevated, the script warns and continues. You can still parse you
 
 ## Output fields
 
-Includes `FormatVersion`, size and deletion times, original path, SID/user, `$R` path/existence/size, and `Anomalies` (comma-separated flags).
+Includes `FormatVersion`, `FileType` (extension like `pdf`/`exe`, or `directory`/`unknown`), size and deletion times, original path, SID/user, `$R` path/existence/size, and `Anomalies` (comma-separated flags).

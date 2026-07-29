@@ -34,6 +34,7 @@ Describe 'ConvertFrom-RecycleBinIFile' {
         $parsed.FormatVersion | Should -Be 2
         $parsed.FileSize | Should -Be 42
         $parsed.OriginalPath | Should -Be 'C:\Users\demo\file.txt'
+        $parsed.FileType | Should -Be 'txt'
         $parsed.PathLength | Should -Be ('C:\Users\demo\file.txt'.Length)
         $parsed.DeletionUTCTime.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') |
             Should -Be $deleted.ToString('yyyy-MM-dd HH:mm:ss')
@@ -57,7 +58,55 @@ Describe 'ConvertFrom-RecycleBinIFile' {
         $parsed.FormatVersion | Should -Be 1
         $parsed.FileSize | Should -Be 100
         $parsed.OriginalPath | Should -Be 'D:\old\report.doc'
+        $parsed.FileType | Should -Be 'doc'
         $parsed.RecycleDataExists | Should -BeTrue
+    }
+
+    It 'sets FileType from extension for pdf and exe paths' {
+        $deleted = [datetime]::SpecifyKind([datetime]'2024-06-15T12:30:00', 'Utc')
+        $pdf = New-IFileFixture -Directory $script:sidDir -Name '$IPDF001.pdf' -Version 2 `
+            -FileSize 10 -DeletionUtc $deleted -OriginalPath 'C:\docs\Report.PDF' -CreateRFile
+        $exe = New-IFileFixture -Directory $script:sidDir -Name '$IEXE001.exe' -Version 2 `
+            -FileSize 10 -DeletionUtc $deleted -OriginalPath 'C:\tools\App.EXE' -CreateRFile
+
+        $pdfItem = Get-Item -LiteralPath $pdf.IPath -Force
+        $pdfItem.LastWriteTime = $deleted.ToLocalTime()
+        $exeItem = Get-Item -LiteralPath $exe.IPath -Force
+        $exeItem.LastWriteTime = $deleted.ToLocalTime()
+
+        $pdfParsed = ConvertFrom-RecycleBinIFile -FilePath $pdf.IPath -LastModified $pdfItem.LastWriteTime
+        $exeParsed = ConvertFrom-RecycleBinIFile -FilePath $exe.IPath -LastModified $exeItem.LastWriteTime
+
+        $pdfParsed.FileType | Should -Be 'pdf'
+        $exeParsed.FileType | Should -Be 'exe'
+    }
+
+    It 'sets FileType to directory when $R is a folder and does not flag RFileMissing' {
+        $deleted = [datetime]::SpecifyKind([datetime]'2024-06-15T12:30:00', 'Utc')
+        $fx = New-IFileFixture -Directory $script:sidDir -Name '$IDIR001' -Version 2 `
+            -FileSize 0 -DeletionUtc $deleted -OriginalPath 'C:\Users\demo\MyFolder'
+        $rPath = Resolve-RecycleBinDataPath -IFilePath $fx.IPath
+        New-Item -ItemType Directory -Path $rPath -Force | Out-Null
+
+        $item = Get-Item -LiteralPath $fx.IPath -Force
+        $item.LastWriteTime = $deleted.ToLocalTime()
+
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
+        $parsed.FileType | Should -Be 'directory'
+        $parsed.RecycleDataExists | Should -BeTrue
+        $parsed.Anomalies | Should -Not -Match 'RFileMissing'
+        $parsed.Anomalies | Should -Not -Match 'SizeMismatch'
+    }
+
+    It 'sets FileType to unknown when path has no extension' {
+        $deleted = [datetime]::SpecifyKind([datetime]'2024-06-15T12:30:00', 'Utc')
+        $fx = New-IFileFixture -Directory $script:sidDir -Name '$INOEXT' -Version 2 `
+            -FileSize 1 -DeletionUtc $deleted -OriginalPath 'C:\readme' -CreateRFile
+        $item = Get-Item -LiteralPath $fx.IPath -Force
+        $item.LastWriteTime = $deleted.ToLocalTime()
+
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
+        $parsed.FileType | Should -Be 'unknown'
     }
 
     It 'returns null for truncated files' {
