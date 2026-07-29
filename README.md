@@ -1,6 +1,6 @@
-# RecycleBinParser
+# Get-RecycleBinItem
 
-PowerShell tool (v1.1.0) that parses Windows Recycle Bin `$I` metadata (Vista+ versions 1 and 2), pairs each entry with its `$R` content file, and reports integrity anomalies. Inspired by Eric Zimmerman's RBCmd.
+PowerShell tool (v1.2.0) that parses Windows Recycle Bin `$I` metadata (Vista+ versions 1 and 2), pairs each entry with its `$R` content file, and reports integrity anomalies. Inspired by Eric Zimmerman's RBCmd.
 
 **License:** [Mozilla Public License 2.0](LICENSE)
 
@@ -16,10 +16,10 @@ PowerShell tool (v1.1.0) that parses Windows Recycle Bin `$I` metadata (Vista+ v
 ## Usage
 
 ```powershell
-.\RecycleBinParser.ps1
-.\RecycleBinParser.ps1 -Drive C -CsvPath C:\temp\recycle.csv
-.\RecycleBinParser.ps1 -Path D:\evidence\`$RECYCLE.BIN -Verbose
-Get-Help .\RecycleBinParser.ps1 -Full
+.\Get-RecycleBinItem.ps1
+.\Get-RecycleBinItem.ps1 -Drive C -CsvPath C:\temp\recycle.csv
+.\Get-RecycleBinItem.ps1 -Path D:\evidence\`$RECYCLE.BIN -Verbose
+Get-Help .\Get-RecycleBinItem.ps1 -Full
 ```
 
 ## Tests

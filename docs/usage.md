@@ -1,7 +1,7 @@
 # Usage
 
 ```powershell
-Get-Help .\RecycleBinParser.ps1 -Full
+Get-Help .\Get-RecycleBinItem.ps1 -Full
 ```
 
 ## Parameters
@@ -19,13 +19,13 @@ Get-Help .\RecycleBinParser.ps1 -Full
 
 ```powershell
 # All drives, console output
-.\RecycleBinParser.ps1
+.\Get-RecycleBinItem.ps1
 
 # One drive + CSV
-.\RecycleBinParser.ps1 -Drive C -CsvPath C:\temp\recycle.csv
+.\Get-RecycleBinItem.ps1 -Drive C -CsvPath C:\temp\recycle.csv
 
 # Offline evidence tree
-.\RecycleBinParser.ps1 -Path D:\evidence\`$RECYCLE.BIN -Verbose
+.\Get-RecycleBinItem.ps1 -Path D:\evidence\`$RECYCLE.BIN -Verbose
 ```
 
 ## Elevation

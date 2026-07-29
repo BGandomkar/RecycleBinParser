@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Parses Windows Recycle Bin $I metadata files across drives or a custom path.
+    Gets Windows Recycle Bin item metadata from $I files across drives or a custom path.
 
 .DESCRIPTION
     Searches $RECYCLE.BIN folders for $I* metadata files, parses Vista+ format
@@ -22,22 +22,22 @@
     Mutually exclusive with -Drive.
 
 .EXAMPLE
-    .\RecycleBinParser.ps1
+    .\Get-RecycleBinItem.ps1
 
     Scan all filesystem drives and list results in the console.
 
 .EXAMPLE
-    .\RecycleBinParser.ps1 -Drive C -CsvPath C:\temp\recycle.csv -Verbose
+    .\Get-RecycleBinItem.ps1 -Drive C -CsvPath C:\temp\recycle.csv -Verbose
 
     Scan only C:\$RECYCLE.BIN and export CSV with verbose parse messages.
 
 .EXAMPLE
-    .\RecycleBinParser.ps1 -Path D:\evidence\$RECYCLE.BIN
+    .\Get-RecycleBinItem.ps1 -Path D:\evidence\$RECYCLE.BIN
 
     Parse an offline or mounted Recycle Bin copy.
 
 .NOTES
-    Version: 1.1.0
+    Version: 1.2.0
     License: MPL-2.0
     $I format: version 1 (Vista-8.1), version 2 (Windows 10+).
 #>
@@ -62,7 +62,7 @@ function Test-IsAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Get-RecycleDataPath {
+function Resolve-RecycleBinDataPath {
     param(
         [Parameter(Mandatory = $true)]
         [string]$IFilePath
@@ -78,7 +78,7 @@ function Get-RecycleDataPath {
     return Join-Path $directory $rLeaf
 }
 
-function Resolve-RecycleSid {
+function Resolve-RecycleBinSid {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FilePath
@@ -120,7 +120,7 @@ function Resolve-RecycleSid {
     }
 }
 
-function ParseRecycleFile {
+function ConvertFrom-RecycleBinIFile {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FilePath,
@@ -231,9 +231,9 @@ function ParseRecycleFile {
         }
     }
 
-    $sidInfo = Resolve-RecycleSid -FilePath $FilePath
+    $sidInfo = Resolve-RecycleBinSid -FilePath $FilePath
 
-    $rPath = Get-RecycleDataPath -IFilePath $FilePath
+    $rPath = Resolve-RecycleBinDataPath -IFilePath $FilePath
     $rExists = $false
     $rSize = $null
     if ($rPath -and (Test-Path -LiteralPath $rPath -PathType Leaf)) {
@@ -286,7 +286,7 @@ function ParseRecycleFile {
     }
 }
 
-function Get-RecycleBinRoots {
+function Get-RecycleBinRoot {
     param(
         [string]$Drive,
         [string]$Path
@@ -329,7 +329,7 @@ function Get-RecycleBinRoots {
     return , $roots.ToArray()
 }
 
-function Invoke-RecycleBinParser {
+function Get-RecycleBinItem {
     param(
         [string]$Drive,
         [string]$Path
@@ -340,7 +340,7 @@ function Invoke-RecycleBinParser {
     }
 
     $results = New-Object System.Collections.Generic.List[object]
-    $roots = Get-RecycleBinRoots -Drive $Drive -Path $Path
+    $roots = Get-RecycleBinRoot -Drive $Drive -Path $Path
 
     foreach ($root in $roots) {
         Write-Verbose "Scanning: $root"
@@ -353,7 +353,7 @@ function Invoke-RecycleBinParser {
 
         foreach ($file in $files) {
             try {
-                $parsed = ParseRecycleFile -FilePath $file.FullName -LastModified $file.LastWriteTime
+                $parsed = ConvertFrom-RecycleBinIFile -FilePath $file.FullName -LastModified $file.LastWriteTime
                 if ($parsed) {
                     [void]$results.Add($parsed)
                 }
@@ -368,7 +368,7 @@ function Invoke-RecycleBinParser {
 
 # Run when executed; skip when dot-sourced (e.g. Pester).
 if ($MyInvocation.InvocationName -ne '.') {
-    $results = Invoke-RecycleBinParser -Drive $Drive -Path $Path
+    $results = Get-RecycleBinItem -Drive $Drive -Path $Path
     if ($CsvPath) {
         $results | Export-Csv -Path $CsvPath -NoTypeInformation
         Write-Verbose "Wrote $($results.Count) row(s) to $CsvPath"

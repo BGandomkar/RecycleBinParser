@@ -2,15 +2,15 @@
 
 ## Design
 
-Everything lives in a single script, [RecycleBinParser.ps1](../RecycleBinParser.ps1), for easy drop-in use. Functions are defined at the top; the live scan runs only when the script is **executed**, not when it is **dot-sourced** (so Pester can load helpers without scanning the machine).
+Everything lives in a single script, [Get-RecycleBinItem.ps1](../Get-RecycleBinItem.ps1), for easy drop-in use. Functions are defined at the top; the live scan runs only when the script is **executed**, not when it is **dot-sourced** (so Pester can load helpers without scanning the machine).
 
 ## Flow
 
-1. Resolve scan roots (`-Path`, `-Drive`, or all PSDrives).
+1. Resolve scan roots (`-Path`, `-Drive`, or all PSDrives) via `Get-RecycleBinRoot`.
 2. Find `$I*` files under each root.
-3. Parse `$I` by format version.
-4. Pair with sibling `$R*` file.
-5. Collect anomalies and emit CSV or list output.
+3. Parse `$I` by format version (`ConvertFrom-RecycleBinIFile`).
+4. Pair with sibling `$R*` file (`Resolve-RecycleBinDataPath`).
+5. Collect anomalies and emit CSV or list output (`Get-RecycleBinItem`).
 
 ## `$I` formats
 
@@ -44,4 +44,4 @@ For `$I<suffix>`, the content file is `$R<suffix>` in the same directory.
 
 ## Tests
 
-Synthetic `$I` bytes are built by [tests/New-IFileFixture.ps1](../tests/New-IFileFixture.ps1). Pester cases live in [tests/RecycleBinParser.Tests.ps1](../tests/RecycleBinParser.Tests.ps1).
+Synthetic `$I` bytes are built by [tests/New-IFileFixture.ps1](../tests/New-IFileFixture.ps1). Pester cases live in [tests/Get-RecycleBinItem.Tests.ps1](../tests/Get-RecycleBinItem.Tests.ps1).

@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.0] - 2026-07-29
+
+### Changed
+
+- Renamed tool from RecycleBinParser to **Get-RecycleBinItem** (script and docs)
+- Renamed functions to Verb-Noun style: `Get-RecycleBinItem`, `ConvertFrom-RecycleBinIFile`, `Resolve-RecycleBinDataPath`, `Resolve-RecycleBinSid`, `Get-RecycleBinRoot`
+
 ## [1.1.0] - 2026-07-28
 
 ### Added

@@ -2,13 +2,13 @@ $ErrorActionPreference = 'Stop'
 
 BeforeAll {
     $repoRoot = Split-Path -Parent $PSScriptRoot
-    . (Join-Path $repoRoot 'RecycleBinParser.ps1')
+    . (Join-Path $repoRoot 'Get-RecycleBinItem.ps1')
     . (Join-Path $PSScriptRoot 'New-IFileFixture.ps1')
 }
 
-Describe 'ParseRecycleFile' {
+Describe 'ConvertFrom-RecycleBinIFile' {
     BeforeEach {
-        $script:tempRoot = Join-Path $env:TEMP ("RecycleBinParserTests_" + [guid]::NewGuid().ToString('N'))
+        $script:tempRoot = Join-Path $env:TEMP ("Get-RecycleBinItemTests_" + [guid]::NewGuid().ToString('N'))
         $sidDir = Join-Path $script:tempRoot '$RECYCLE.BIN\S-1-5-21-1-2-3-1001'
         New-Item -ItemType Directory -Path $sidDir -Force | Out-Null
         $script:sidDir = $sidDir
@@ -26,10 +26,9 @@ Describe 'ParseRecycleFile' {
             -FileSize 42 -DeletionUtc $deleted -OriginalPath 'C:\Users\demo\file.txt' -CreateRFile
 
         $item = Get-Item -LiteralPath $fx.IPath -Force
-        # Align LastWriteTime to deletion local for clean anomalies aside from pairing
         $item.LastWriteTime = $deleted.ToLocalTime()
 
-        $parsed = ParseRecycleFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
 
         $parsed | Should -Not -BeNullOrEmpty
         $parsed.FormatVersion | Should -Be 2
@@ -52,7 +51,7 @@ Describe 'ParseRecycleFile' {
         $item = Get-Item -LiteralPath $fx.IPath -Force
         $item.LastWriteTime = $deleted.ToLocalTime()
 
-        $parsed = ParseRecycleFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
 
         $parsed | Should -Not -BeNullOrEmpty
         $parsed.FormatVersion | Should -Be 1
@@ -66,7 +65,7 @@ Describe 'ParseRecycleFile' {
         $fx = New-IFileFixture -Directory $script:sidDir -Name '$ITRUNC.bin' -Version 2 `
             -FileSize 1 -DeletionUtc $deleted -OriginalPath 'C:\a.txt' -Truncate
 
-        $parsed = ParseRecycleFile -FilePath $fx.IPath -LastModified ([datetime]::Now)
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified ([datetime]::Now)
         $parsed | Should -Be $null
     }
 
@@ -77,10 +76,9 @@ Describe 'ParseRecycleFile' {
         [BitConverter]::GetBytes([int64]10).CopyTo($buf, 8)
         [BitConverter]::GetBytes([int64]-1).CopyTo($buf, 16)
         [BitConverter]::GetBytes([uint32]2).CopyTo($buf, 24)
-        # path: empty + NUL already zeroed
         [System.IO.File]::WriteAllBytes($path, $buf)
 
-        $parsed = ParseRecycleFile -FilePath $path -LastModified ([datetime]::Now)
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $path -LastModified ([datetime]::Now)
         $parsed | Should -Be $null
     }
 
@@ -89,9 +87,6 @@ Describe 'ParseRecycleFile' {
         $fx = New-IFileFixture -Directory $script:sidDir -Name '$IOVER.bin' -Version 2 `
             -FileSize 1 -DeletionUtc $deleted -OriginalPath 'C:\a.txt' -OverridePathCharCount 5000
 
-        # OverridePathCharCount makes declared size huge; WriteAllBytes still writes small buffer
-        # Rebuild as truncated relative to claim: helper allocates charCount*2 so file is large.
-        # Instead write a small file claiming a large length:
         $buf = New-Object byte[] 32
         [BitConverter]::GetBytes([int64]2).CopyTo($buf, 0)
         [BitConverter]::GetBytes([int64]1).CopyTo($buf, 8)
@@ -99,7 +94,7 @@ Describe 'ParseRecycleFile' {
         [BitConverter]::GetBytes([uint32]400).CopyTo($buf, 24)
         [System.IO.File]::WriteAllBytes($fx.IPath, $buf)
 
-        $parsed = ParseRecycleFile -FilePath $fx.IPath -LastModified ([datetime]::Now)
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified ([datetime]::Now)
         $parsed | Should -Be $null
     }
 
@@ -111,7 +106,7 @@ Describe 'ParseRecycleFile' {
         $item = Get-Item -LiteralPath $fx.IPath -Force
         $item.LastWriteTime = $deleted.ToLocalTime()
 
-        $parsed = ParseRecycleFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
         $parsed.RecycleDataExists | Should -BeFalse
         $parsed.Anomalies | Should -Match 'RFileMissing'
     }
@@ -124,19 +119,17 @@ Describe 'ParseRecycleFile' {
         $item = Get-Item -LiteralPath $fx.IPath -Force
         $item.LastWriteTime = $deleted.ToLocalTime()
 
-        $parsed = ParseRecycleFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
         $parsed.Anomalies | Should -Match 'SizeMismatch'
     }
 
     It 'flags PathLengthMismatch when an early NUL appears in the v2 path region' {
         $deleted = [datetime]::SpecifyKind([datetime]'2024-01-01T00:00:00', 'Utc')
         $original = 'C:\early'
-        # Build valid v2 then plant an early NUL after first two chars ("C:")
         $fx = New-IFileFixture -Directory $script:sidDir -Name '$IEARLY.bin' -Version 2 `
             -FileSize 1 -DeletionUtc $deleted -OriginalPath $original -CreateRFile
 
         $bytes = [System.IO.File]::ReadAllBytes($fx.IPath)
-        # Offset 28 = 'C', 30 = ':', 32 = '\' -> put NUL at index 32
         $bytes[32] = 0
         $bytes[33] = 0
         [System.IO.File]::WriteAllBytes($fx.IPath, $bytes)
@@ -144,25 +137,25 @@ Describe 'ParseRecycleFile' {
         $item = Get-Item -LiteralPath $fx.IPath -Force
         $item.LastWriteTime = $deleted.ToLocalTime()
 
-        $parsed = ParseRecycleFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
+        $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
         $parsed | Should -Not -BeNullOrEmpty
         $parsed.Anomalies | Should -Match 'PathLengthMismatch'
     }
 }
 
-Describe 'Get-RecycleDataPath' {
+Describe 'Resolve-RecycleBinDataPath' {
     It 'maps $I name to $R sibling' {
-        $p = Get-RecycleDataPath -IFilePath 'C:\$RECYCLE.BIN\S-1-5-21-1-2-3-4\$IABCDEF.txt'
+        $p = Resolve-RecycleBinDataPath -IFilePath 'C:\$RECYCLE.BIN\S-1-5-21-1-2-3-4\$IABCDEF.txt'
         $p | Should -Be 'C:\$RECYCLE.BIN\S-1-5-21-1-2-3-4\$RABCDEF.txt'
     }
 }
 
-Describe 'Get-RecycleBinRoots' {
+Describe 'Get-RecycleBinRoot' {
     It 'resolves -Path to an existing directory' {
         $dir = Join-Path $env:TEMP ("RecycleRoots_" + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         try {
-            $roots = Get-RecycleBinRoots -Path $dir
+            $roots = Get-RecycleBinRoot -Path $dir
             $roots.Count | Should -Be 1
             $roots[0] | Should -Be (Resolve-Path -LiteralPath $dir).Path
         } finally {

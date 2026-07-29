@@ -10,7 +10,7 @@
 Clone or copy the repository. The tool is one script:
 
 ```text
-RecycleBinParser.ps1
+Get-RecycleBinItem.ps1
 ```
 
 No module install is required.

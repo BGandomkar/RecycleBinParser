@@ -1,6 +1,6 @@
 # Documentation
 
-Welcome to **RecycleBinParser** docs.
+Welcome to **Get-RecycleBinItem** docs.
 
 - [Getting started](getting-started.md)
 - [Installation](installation.md)
