@@ -9,7 +9,7 @@ Everything lives in a single script, [Get-RecycleBinItem.ps1](../Get-RecycleBinI
 1. Resolve scan roots (`-Path`, `-Drive`, or all PSDrives) via `Get-RecycleBinRoot`.
 2. Find `$I*` files under each root.
 3. Parse `$I` by format version (`ConvertFrom-RecycleBinIFile`).
-4. Pair with sibling `$R*` file (`Resolve-RecycleBinDataPath`).
+4. Find sibling `$R*` on disk (`Find-RecycleBinDataItem`).
 5. Collect anomalies and emit CSV or list output (`Get-RecycleBinItem`).
 
 ## `$I` formats
@@ -30,7 +30,7 @@ Unknown versions are skipped (`Write-Verbose`).
 
 ## `$I` / `$R` pairing
 
-For `$I<suffix>`, the content file is `$R<suffix>` in the same directory. `$R` may be a file or a directory (recycled folder).
+For `$I<suffix>`, `Find-RecycleBinDataItem` lists the `$I` directory and looks for an on-disk item named `$R<suffix>` (file or directory). `RecycleDataFile` is set only when that item is found; otherwise it is empty and `RFileMissing` is flagged.
 
 ## FileType
 

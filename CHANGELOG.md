@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.1] - 2026-07-29
+
+### Changed
+
+- `RecycleDataFile` is filled only from an on-disk `$R` found via directory search (`Find-RecycleBinDataItem`), not a constructed path
+
 ## [1.4.0] - 2026-07-29
 
 ### Added

@@ -45,7 +45,7 @@
     Show only Recycle Bin items that have one or more anomaly flags.
 
 .NOTES
-    Version: 1.4.0
+    Version: 1.4.1
     License: MPL-2.0
     $I format: version 1 (Vista-8.1), version 2 (Windows 10+).
 #>
@@ -73,7 +73,7 @@ function Test-IsAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Resolve-RecycleBinDataPath {
+function Find-RecycleBinDataItem {
     param(
         [Parameter(Mandatory = $true)]
         [string]$IFilePath
@@ -85,8 +85,16 @@ function Resolve-RecycleBinDataPath {
         return $null
     }
 
-    $rLeaf = '$R' + $leaf.Substring(2)
-    return Join-Path $directory $rLeaf
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        return $null
+    }
+
+    $expectedName = '$R' + $leaf.Substring(2)
+    $match = Get-ChildItem -LiteralPath $directory -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ieq $expectedName } |
+        Select-Object -First 1
+
+    return $match
 }
 
 function Get-RecycleBinFileType {
@@ -266,17 +274,17 @@ function ConvertFrom-RecycleBinIFile {
 
     $sidInfo = Resolve-RecycleBinSid -FilePath $FilePath
 
-    $rPath = Resolve-RecycleBinDataPath -IFilePath $FilePath
-    $rExists = $false
+    $rItem = Find-RecycleBinDataItem -IFilePath $FilePath
+    $rExists = $null -ne $rItem
     $rIsDirectory = $false
     $rSize = $null
-    if ($rPath -and (Test-Path -LiteralPath $rPath)) {
-        if (Test-Path -LiteralPath $rPath -PathType Container) {
-            $rExists = $true
+    $rPath = ''
+    if ($rItem) {
+        $rPath = $rItem.FullName
+        if ($rItem.PSIsContainer) {
             $rIsDirectory = $true
-        } elseif (Test-Path -LiteralPath $rPath -PathType Leaf) {
-            $rExists = $true
-            $rSize = (Get-Item -LiteralPath $rPath -Force).Length
+        } else {
+            $rSize = $rItem.Length
         }
     }
 
@@ -319,7 +327,7 @@ function ConvertFrom-RecycleBinIFile {
         RecycleFileModification = $LastModified
         PathLength              = $pathLength
         OriginalPath            = $filePathString
-        RecycleDataFile         = if ($rPath) { $rPath } else { '' }
+        RecycleDataFile         = $rPath
         RecycleDataExists       = $rExists
         RecycleDataSize         = $rSize
         SID                     = $sidInfo.SID

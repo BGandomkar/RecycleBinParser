@@ -40,6 +40,7 @@ Describe 'ConvertFrom-RecycleBinIFile' {
             Should -Be $deleted.ToString('yyyy-MM-dd HH:mm:ss')
         $parsed.RecycleDataExists | Should -BeTrue
         $parsed.RecycleDataSize | Should -Be 42
+        $parsed.RecycleDataFile | Should -Be $fx.RPath
         $parsed.Anomalies | Should -Not -Match 'RFileMissing'
         $parsed.Anomalies | Should -Not -Match 'SizeMismatch'
     }
@@ -85,7 +86,8 @@ Describe 'ConvertFrom-RecycleBinIFile' {
         $deleted = [datetime]::SpecifyKind([datetime]'2024-06-15T12:30:00', 'Utc')
         $fx = New-IFileFixture -Directory $script:sidDir -Name '$IDIR001' -Version 2 `
             -FileSize 0 -DeletionUtc $deleted -OriginalPath 'C:\Users\demo\MyFolder'
-        $rPath = Resolve-RecycleBinDataPath -IFilePath $fx.IPath
+        $rName = '$R' + '$IDIR001'.Substring(2)
+        $rPath = Join-Path $script:sidDir $rName
         New-Item -ItemType Directory -Path $rPath -Force | Out-Null
 
         $item = Get-Item -LiteralPath $fx.IPath -Force
@@ -94,6 +96,7 @@ Describe 'ConvertFrom-RecycleBinIFile' {
         $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
         $parsed.FileType | Should -Be 'directory'
         $parsed.RecycleDataExists | Should -BeTrue
+        $parsed.RecycleDataFile | Should -Be (Get-Item -LiteralPath $rPath).FullName
         $parsed.Anomalies | Should -Not -Match 'RFileMissing'
         $parsed.Anomalies | Should -Not -Match 'SizeMismatch'
     }
@@ -157,6 +160,7 @@ Describe 'ConvertFrom-RecycleBinIFile' {
 
         $parsed = ConvertFrom-RecycleBinIFile -FilePath $fx.IPath -LastModified $item.LastWriteTime
         $parsed.RecycleDataExists | Should -BeFalse
+        $parsed.RecycleDataFile | Should -Be ''
         $parsed.Anomalies | Should -Match 'RFileMissing'
     }
 
@@ -192,10 +196,34 @@ Describe 'ConvertFrom-RecycleBinIFile' {
     }
 }
 
-Describe 'Resolve-RecycleBinDataPath' {
-    It 'maps $I name to $R sibling' {
-        $p = Resolve-RecycleBinDataPath -IFilePath 'C:\$RECYCLE.BIN\S-1-5-21-1-2-3-4\$IABCDEF.txt'
-        $p | Should -Be 'C:\$RECYCLE.BIN\S-1-5-21-1-2-3-4\$RABCDEF.txt'
+Describe 'Find-RecycleBinDataItem' {
+    It 'returns the on-disk $R item when present' {
+        $dir = Join-Path $env:TEMP ("FindR_" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        try {
+            $iPath = Join-Path $dir '$IABCDEF.txt'
+            $rPath = Join-Path $dir '$RABCDEF.txt'
+            Set-Content -LiteralPath $iPath -Value 'i'
+            Set-Content -LiteralPath $rPath -Value 'r'
+            $found = Find-RecycleBinDataItem -IFilePath $iPath
+            $found | Should -Not -BeNullOrEmpty
+            $found.FullName | Should -Be (Get-Item -LiteralPath $rPath).FullName
+        } finally {
+            Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'returns null when $R is not on disk' {
+        $dir = Join-Path $env:TEMP ("FindRMissing_" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        try {
+            $iPath = Join-Path $dir '$IABCDEF.txt'
+            Set-Content -LiteralPath $iPath -Value 'i'
+            $found = Find-RecycleBinDataItem -IFilePath $iPath
+            $found | Should -Be $null
+        } finally {
+            Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
