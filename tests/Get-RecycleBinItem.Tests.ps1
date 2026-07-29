@@ -196,6 +196,44 @@ Describe 'ConvertFrom-RecycleBinIFile' {
     }
 }
 
+Describe 'Format-ByteSize' {
+    It 'formats bytes, KB, MB, and GB' {
+        Format-ByteSize -Bytes 512 | Should -Be '512 B'
+        Format-ByteSize -Bytes 2048 | Should -Be '2 KB'
+        Format-ByteSize -Bytes 1572864 | Should -Be '1.5 MB'
+        Format-ByteSize -Bytes 2147483648 | Should -Be '2 GB'
+    }
+
+    It 'returns null for null input' {
+        Format-ByteSize -Bytes $null | Should -Be $null
+    }
+}
+
+Describe 'Get-RecycleBinItem -HumanReadableSize' {
+    It 'formats FileSize and RecycleDataSize as human-readable strings' {
+        $tempRoot = Join-Path $env:TEMP ("Get-RecycleBinItemHuman_" + [guid]::NewGuid().ToString('N'))
+        $recycleRoot = Join-Path $tempRoot '$RECYCLE.BIN'
+        $sidDir = Join-Path $recycleRoot 'S-1-5-18'
+        New-Item -ItemType Directory -Path $sidDir -Force | Out-Null
+        try {
+            $deleted = [datetime]::SpecifyKind([datetime]'2024-03-01T10:00:00', 'Utc')
+            $fx = New-IFileFixture -Directory $sidDir -Name '$IHUMAN.bin' -Version 2 `
+                -FileSize 1536 -DeletionUtc $deleted -OriginalPath 'C:\human.bin' -CreateRFile
+            $item = Get-Item -LiteralPath $fx.IPath -Force
+            $item.LastWriteTime = $deleted.ToLocalTime()
+
+            $raw = Get-RecycleBinItem -Path $recycleRoot
+            $human = Get-RecycleBinItem -Path $recycleRoot -HumanReadableSize
+
+            $raw[0].FileSize | Should -Be 1536
+            $human[0].FileSize | Should -Be '1.5 KB'
+            $human[0].RecycleDataSize | Should -Be '1.5 KB'
+        } finally {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Describe 'Find-RecycleBinDataItem' {
     It 'returns the on-disk $R item when present' {
         $dir = Join-Path $env:TEMP ("FindR_" + [guid]::NewGuid().ToString('N'))

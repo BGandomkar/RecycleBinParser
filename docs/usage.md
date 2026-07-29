@@ -12,6 +12,7 @@ Get-Help .\Get-RecycleBinItem.ps1 -Full
 | `-Drive` | Scan only one volume (e.g. `C` or `C:`). |
 | `-Path` | Scan a specific `$RECYCLE.BIN` tree (live or offline copy). |
 | `-AnomaliesOnly` | Return only items with a non-empty `Anomalies` value. |
+| `-HumanReadableSize` | Format `FileSize` and `RecycleDataSize` as B/KB/MB/GB/TB strings instead of raw bytes. |
 | `-Verbose` | Log skipped/corrupt files and scan roots. |
 
 `-Drive` and `-Path` are mutually exclusive. Default (neither set) scans all filesystem PSDrives that have `$RECYCLE.BIN`.
@@ -30,6 +31,9 @@ Get-Help .\Get-RecycleBinItem.ps1 -Full
 
 # Only items with anomalies
 .\Get-RecycleBinItem.ps1 -AnomaliesOnly
+
+# Human-readable sizes
+.\Get-RecycleBinItem.ps1 -HumanReadableSize
 ```
 
 ## Elevation

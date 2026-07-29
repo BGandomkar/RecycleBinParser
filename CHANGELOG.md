@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.0] - 2026-07-29
+
+### Added
+
+- `-HumanReadableSize` switch to format `FileSize` and `RecycleDataSize` as B/KB/MB/GB/TB strings
+
 ## [1.4.2] - 2026-07-29
 
 ### Changed

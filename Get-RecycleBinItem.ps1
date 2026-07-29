@@ -24,6 +24,9 @@
 .PARAMETER AnomaliesOnly
     Return only items whose Anomalies field is non-empty.
 
+.PARAMETER HumanReadableSize
+    Format FileSize and RecycleDataSize as human-readable strings (B, KB, MB, GB, TB) instead of raw bytes.
+
 .EXAMPLE
     .\Get-RecycleBinItem.ps1
 
@@ -44,8 +47,13 @@
 
     Show only Recycle Bin items that have one or more anomaly flags.
 
+.EXAMPLE
+    .\Get-RecycleBinItem.ps1 -HumanReadableSize
+
+    List items with FileSize and RecycleDataSize as KB/MB/GB strings.
+
 .NOTES
-    Version: 1.4.2
+    Version: 1.5.0
     License: MPL-2.0
     $I format: version 1 (Vista-8.1), version 2 (Windows 10+).
 #>
@@ -64,13 +72,62 @@ param(
     [string]$Path,
 
     [Parameter(Mandatory = $false)]
-    [switch]$AnomaliesOnly
+    [switch]$AnomaliesOnly,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$HumanReadableSize
 )
 
 function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Format-ByteSize {
+    param(
+        [AllowNull()]
+        [Nullable[int64]]$Bytes
+    )
+
+    if ($null -eq $Bytes) {
+        return $null
+    }
+
+    $units = @('B', 'KB', 'MB', 'GB', 'TB')
+    $value = [double][Math]::Abs([int64]$Bytes)
+    $unitIndex = 0
+    while ($value -ge 1024 -and $unitIndex -lt ($units.Length - 1)) {
+        $value /= 1024
+        $unitIndex++
+    }
+
+    if ($unitIndex -eq 0) {
+        $formatted = '{0} {1}' -f [int64]$Bytes, $units[0]
+    } else {
+        $sign = if ([int64]$Bytes -lt 0) { '-' } else { '' }
+        $formatted = '{0}{1:0.##} {2}' -f $sign, $value, $units[$unitIndex]
+    }
+
+    return $formatted
+}
+
+function ConvertTo-HumanReadableSizes {
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject]$Item
+    )
+
+    $ordered = [ordered]@{}
+    foreach ($prop in $Item.PSObject.Properties) {
+        if ($prop.Name -eq 'FileSize' -or $prop.Name -eq 'RecycleDataSize') {
+            $ordered[$prop.Name] = Format-ByteSize -Bytes $prop.Value
+        } else {
+            $ordered[$prop.Name] = $prop.Value
+        }
+    }
+
+    return [PSCustomObject]$ordered
 }
 
 function Find-RecycleBinDataItem {
@@ -383,7 +440,8 @@ function Get-RecycleBinItem {
     param(
         [string]$Drive,
         [string]$Path,
-        [switch]$AnomaliesOnly
+        [switch]$AnomaliesOnly,
+        [switch]$HumanReadableSize
     )
 
     if (-not (Test-IsAdministrator)) {
@@ -409,6 +467,9 @@ function Get-RecycleBinItem {
                     if ($AnomaliesOnly -and [string]::IsNullOrWhiteSpace($parsed.Anomalies)) {
                         continue
                     }
+                    if ($HumanReadableSize) {
+                        $parsed = ConvertTo-HumanReadableSizes -Item $parsed
+                    }
                     [void]$results.Add($parsed)
                 }
             } catch {
@@ -422,7 +483,7 @@ function Get-RecycleBinItem {
 
 # Run when executed; skip when dot-sourced (e.g. Pester).
 if ($MyInvocation.InvocationName -ne '.') {
-    $results = Get-RecycleBinItem -Drive $Drive -Path $Path -AnomaliesOnly:$AnomaliesOnly
+    $results = Get-RecycleBinItem -Drive $Drive -Path $Path -AnomaliesOnly:$AnomaliesOnly -HumanReadableSize:$HumanReadableSize
     if ($CsvPath) {
         $results | Export-Csv -Path $CsvPath -NoTypeInformation
         Write-Verbose "Wrote $($results.Count) row(s) to $CsvPath"

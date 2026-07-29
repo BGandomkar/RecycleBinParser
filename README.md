@@ -1,6 +1,6 @@
 # Get-RecycleBinItem
 
-PowerShell tool (v1.4.2) that parses Windows Recycle Bin `$I` metadata (Vista+ versions 1 and 2), pairs each entry with its `$R` content file, and reports integrity anomalies. Inspired by Eric Zimmerman's RBCmd.
+PowerShell tool (v1.5.0) that parses Windows Recycle Bin `$I` metadata (Vista+ versions 1 and 2), pairs each entry with its `$R` content file, and reports integrity anomalies. Inspired by Eric Zimmerman's RBCmd.
 
 **License:** [Mozilla Public License 2.0](LICENSE)
 
@@ -12,6 +12,7 @@ PowerShell tool (v1.4.2) that parses Windows Recycle Bin `$I` metadata (Vista+ v
 - Scan all drives, one `-Drive`, or a custom `-Path` (offline copy)
 - Works without admin for your own Recycle Bin; warns when not elevated
 - `-AnomaliesOnly` to list only flagged items
+- `-HumanReadableSize` for KB/MB/GB size strings
 - Object pipeline output (pipeable) or CSV via `-CsvPath`; `-Verbose` for skipped files
 - Pester tests with synthetic fixtures
 
@@ -22,6 +23,7 @@ PowerShell tool (v1.4.2) that parses Windows Recycle Bin `$I` metadata (Vista+ v
 .\Get-RecycleBinItem.ps1 -Drive C -CsvPath C:\temp\recycle.csv
 .\Get-RecycleBinItem.ps1 -Path D:\evidence\`$RECYCLE.BIN -Verbose
 .\Get-RecycleBinItem.ps1 -AnomaliesOnly
+.\Get-RecycleBinItem.ps1 -HumanReadableSize
 Get-Help .\Get-RecycleBinItem.ps1 -Full
 ```
 
