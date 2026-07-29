@@ -163,3 +163,36 @@ Describe 'Get-RecycleBinRoot' {
         }
     }
 }
+
+Describe 'Get-RecycleBinItem -AnomaliesOnly' {
+    It 'returns only items with non-empty Anomalies' {
+        $tempRoot = Join-Path $env:TEMP ("Get-RecycleBinItemAnom_" + [guid]::NewGuid().ToString('N'))
+        $recycleRoot = Join-Path $tempRoot '$RECYCLE.BIN'
+        $sidDir = Join-Path $recycleRoot 'S-1-5-18'
+        New-Item -ItemType Directory -Path $sidDir -Force | Out-Null
+        try {
+            $deleted = [datetime]::SpecifyKind([datetime]'2024-03-01T10:00:00', 'Utc')
+
+            $clean = New-IFileFixture -Directory $sidDir -Name '$ICLEAN.bin' -Version 2 `
+                -FileSize 8 -DeletionUtc $deleted -OriginalPath 'C:\clean.bin' -CreateRFile
+            $cleanItem = Get-Item -LiteralPath $clean.IPath -Force
+            $cleanItem.LastWriteTime = $deleted.ToLocalTime()
+
+            $dirty = New-IFileFixture -Directory $sidDir -Name '$IDIRTY.bin' -Version 2 `
+                -FileSize 8 -DeletionUtc $deleted -OriginalPath 'C:\dirty.bin'
+            $dirtyItem = Get-Item -LiteralPath $dirty.IPath -Force
+            $dirtyItem.LastWriteTime = $deleted.ToLocalTime()
+
+            $all = Get-RecycleBinItem -Path $recycleRoot
+            $filtered = Get-RecycleBinItem -Path $recycleRoot -AnomaliesOnly
+
+            $all.Count | Should -Be 2
+            $filtered.Count | Should -Be 1
+            $filtered[0].RecycleFile | Should -Be $dirty.IPath
+            $filtered[0].Anomalies | Should -Match 'RFileMissing'
+        } finally {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+

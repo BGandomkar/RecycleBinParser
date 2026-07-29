@@ -11,6 +11,7 @@ Get-Help .\Get-RecycleBinItem.ps1 -Full
 | `-CsvPath` | Write results to CSV. Without it, output uses `Format-List`. |
 | `-Drive` | Scan only one volume (e.g. `C` or `C:`). |
 | `-Path` | Scan a specific `$RECYCLE.BIN` tree (live or offline copy). |
+| `-AnomaliesOnly` | Return only items with a non-empty `Anomalies` value. |
 | `-Verbose` | Log skipped/corrupt files and scan roots. |
 
 `-Drive` and `-Path` are mutually exclusive. Default (neither set) scans all filesystem PSDrives that have `$RECYCLE.BIN`.
@@ -26,6 +27,9 @@ Get-Help .\Get-RecycleBinItem.ps1 -Full
 
 # Offline evidence tree
 .\Get-RecycleBinItem.ps1 -Path D:\evidence\`$RECYCLE.BIN -Verbose
+
+# Only items with anomalies
+.\Get-RecycleBinItem.ps1 -AnomaliesOnly
 ```
 
 ## Elevation

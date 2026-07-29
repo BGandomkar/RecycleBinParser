@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.0] - 2026-07-29
+
+### Added
+
+- `-AnomaliesOnly` switch to return only items with a non-empty `Anomalies` field
+
 ## [1.2.0] - 2026-07-29
 
 ### Changed

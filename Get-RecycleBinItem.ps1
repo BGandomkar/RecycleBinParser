@@ -21,6 +21,9 @@
     Optional absolute path to a $RECYCLE.BIN tree (live folder or offline copy).
     Mutually exclusive with -Drive.
 
+.PARAMETER AnomaliesOnly
+    Return only items whose Anomalies field is non-empty.
+
 .EXAMPLE
     .\Get-RecycleBinItem.ps1
 
@@ -36,8 +39,13 @@
 
     Parse an offline or mounted Recycle Bin copy.
 
+.EXAMPLE
+    .\Get-RecycleBinItem.ps1 -AnomaliesOnly
+
+    Show only Recycle Bin items that have one or more anomaly flags.
+
 .NOTES
-    Version: 1.2.0
+    Version: 1.3.0
     License: MPL-2.0
     $I format: version 1 (Vista-8.1), version 2 (Windows 10+).
 #>
@@ -53,7 +61,10 @@ param(
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
     [ValidateNotNullOrEmpty()]
-    [string]$Path
+    [string]$Path,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$AnomaliesOnly
 )
 
 function Test-IsAdministrator {
@@ -332,7 +343,8 @@ function Get-RecycleBinRoot {
 function Get-RecycleBinItem {
     param(
         [string]$Drive,
-        [string]$Path
+        [string]$Path,
+        [switch]$AnomaliesOnly
     )
 
     if (-not (Test-IsAdministrator)) {
@@ -355,6 +367,9 @@ function Get-RecycleBinItem {
             try {
                 $parsed = ConvertFrom-RecycleBinIFile -FilePath $file.FullName -LastModified $file.LastWriteTime
                 if ($parsed) {
+                    if ($AnomaliesOnly -and [string]::IsNullOrWhiteSpace($parsed.Anomalies)) {
+                        continue
+                    }
                     [void]$results.Add($parsed)
                 }
             } catch {
@@ -368,7 +383,7 @@ function Get-RecycleBinItem {
 
 # Run when executed; skip when dot-sourced (e.g. Pester).
 if ($MyInvocation.InvocationName -ne '.') {
-    $results = Get-RecycleBinItem -Drive $Drive -Path $Path
+    $results = Get-RecycleBinItem -Drive $Drive -Path $Path -AnomaliesOnly:$AnomaliesOnly
     if ($CsvPath) {
         $results | Export-Csv -Path $CsvPath -NoTypeInformation
         Write-Verbose "Wrote $($results.Count) row(s) to $CsvPath"
