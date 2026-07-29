@@ -11,7 +11,7 @@
     users' folders may be inaccessible without elevation.
 
 .PARAMETER CsvPath
-    Optional path to write results as CSV. If omitted, results are written with Format-List.
+    Optional path to write results as CSV. If omitted, PSCustomObject items are written to the success stream (PowerShell formats them for the console).
 
 .PARAMETER Drive
     Optional drive letter (e.g. C or C:) to scan only that volume's $RECYCLE.BIN.
@@ -45,7 +45,7 @@
     Show only Recycle Bin items that have one or more anomaly flags.
 
 .NOTES
-    Version: 1.4.1
+    Version: 1.4.2
     License: MPL-2.0
     $I format: version 1 (Vista-8.1), version 2 (Windows 10+).
 #>
@@ -427,6 +427,6 @@ if ($MyInvocation.InvocationName -ne '.') {
         $results | Export-Csv -Path $CsvPath -NoTypeInformation
         Write-Verbose "Wrote $($results.Count) row(s) to $CsvPath"
     } else {
-        $results | Format-List
+        $results
     }
 }

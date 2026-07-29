@@ -8,7 +8,7 @@ Get-Help .\Get-RecycleBinItem.ps1 -Full
 
 | Parameter | Description |
 |-----------|-------------|
-| `-CsvPath` | Write results to CSV. Without it, output uses `Format-List`. |
+| `-CsvPath` | Write results to CSV. Without it, PSCustomObject items go to the pipeline (console auto-formats them). |
 | `-Drive` | Scan only one volume (e.g. `C` or `C:`). |
 | `-Path` | Scan a specific `$RECYCLE.BIN` tree (live or offline copy). |
 | `-AnomaliesOnly` | Return only items with a non-empty `Anomalies` value. |

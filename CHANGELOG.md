@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.2] - 2026-07-29
+
+### Changed
+
+- Script execution emits PSCustomObject items instead of `Format-List`, so output is pipeable in both run and dot-source cases
+
 ## [1.4.1] - 2026-07-29
 
 ### Changed

@@ -10,7 +10,7 @@ Everything lives in a single script, [Get-RecycleBinItem.ps1](../Get-RecycleBinI
 2. Find `$I*` files under each root.
 3. Parse `$I` by format version (`ConvertFrom-RecycleBinIFile`).
 4. Find sibling `$R*` on disk (`Find-RecycleBinDataItem`).
-5. Collect anomalies and emit CSV or list output (`Get-RecycleBinItem`).
+5. Collect anomalies and emit objects or CSV (`Get-RecycleBinItem`).
 
 ## `$I` formats
 
